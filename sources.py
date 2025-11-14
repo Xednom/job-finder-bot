@@ -147,7 +147,7 @@ async def fetch_jobs_onlinejobs(
         async with session.get(
             base_url,
             params=params,
-            timeout=aiohttp.ClientTimeout(total=30),
+            timeout=aiohttp.ClientTimeout(total=60),
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
@@ -156,8 +156,8 @@ async def fetch_jobs_onlinejobs(
                 print(f"OnlineJobs.ph returned status {resp.status}")
                 return []
             html = await resp.text()
-    except aiohttp.ClientError as e:
-        print(f"Error fetching from OnlineJobs.ph: {e}")
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from OnlineJobs.ph (timeout or connection issue): {e}")
         return []
     
     jobs = []
