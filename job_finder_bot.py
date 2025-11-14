@@ -238,6 +238,13 @@ async def on_ready():
     source="Which job source to query",
     experience="For Upwork: experience level (entry/intermediate/expert)",
 )
+@app_commands.choices(
+    experience=[
+        app_commands.Choice(name="Entry Level", value="entry"),
+        app_commands.Choice(name="Intermediate", value="intermediate"),
+        app_commands.Choice(name="Expert", value="expert"),
+    ]
+)
 async def findjob(
     interaction: discord.Interaction,
     role: str,
