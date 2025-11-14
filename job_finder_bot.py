@@ -181,11 +181,14 @@ def build_jobs_embed(jobs: List[Dict[str, Any]], page: int) -> discord.Embed:
             or "Remote or unspecified"
         )
         salary = job.get("salary") or job.get("salary_range") or ""
+        experience = job.get("experience") or ""
         short_desc = job.get("description") or job.get("job_description") or ""
         # keep small - strip tags if needed
         short_desc = (short_desc[:200] + "...") if len(short_desc) > 200 else short_desc
         name_line = f"{title} — {company}" if company else title
         field_value = f"**Location:** {location}\n"
+        if experience:
+            field_value += f"**Experience:** {experience}\n"
         if salary:
             field_value += f"**Salary:** {salary}\n"
         field_value += f"[Apply / Read more]({url})\n\n{short_desc}"
@@ -458,6 +461,12 @@ async def poll_saved_searches():
                             value=j.get("location") or "Remote/Unspecified",
                             inline=True,
                         )
+                        if j.get("experience"):
+                            embed.add_field(
+                                name="Experience",
+                                value=j.get("experience"),
+                                inline=True,
+                            )
                         embed.add_field(name="Source", value=source, inline=True)
                         embed.set_footer(text=f"Search: {query}")
                         try:

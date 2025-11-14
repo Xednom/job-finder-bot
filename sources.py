@@ -366,12 +366,21 @@ async def fetch_jobs_upwork(
                     
                     unique_id = hashlib.md5(job_url.encode()).hexdigest()
                     
+                    # Map contractor_tier to experience level name
+                    if contractor_tier == 1:
+                        experience_level = "Entry Level"
+                    elif contractor_tier == 2:
+                        experience_level = "Intermediate"
+                    else:  # contractor_tier == 3
+                        experience_level = "Expert"
+                    
                     jobs.append({
                         "unique_id": unique_id,
                         "title": job_title,
                         "company": "Upwork Client",
                         "url": job_url,
-                        "location": f"Remote (Freelance - {'Entry' if contractor_tier == 1 else 'Intermediate' if contractor_tier == 2 else 'Expert'})",
+                        "location": "Remote (Freelance)",
+                        "experience": experience_level,
                         "salary": budget,
                         "description": skills[:200] if skills else "",
                         "raw": {
@@ -436,7 +445,6 @@ async def fetch_jobs_upwork(
                             
                         job_id = job.get('id', '') or job.get('ciphertext', '')
                         job_title = job.get('title', 'Untitled')
-                        job_type = job.get('jobType', '')
                         budget = job.get('amount', {}).get('amount', '') if 'amount' in job else ''
                         
                         # Build job URL
@@ -447,12 +455,21 @@ async def fetch_jobs_upwork(
                         
                         unique_id = hashlib.md5(full_url.encode()).hexdigest()
                         
+                        # Map contractor_tier to experience level name
+                        if contractor_tier == 1:
+                            experience_level = "Entry Level"
+                        elif contractor_tier == 2:
+                            experience_level = "Intermediate"
+                        else:  # contractor_tier == 3
+                            experience_level = "Expert"
+                        
                         jobs.append({
                             "unique_id": unique_id,
                             "title": job_title,
                             "company": "Upwork Client",
                             "url": full_url,
-                            "location": f"Remote (Freelance - {'Entry' if contractor_tier == 1 else 'Intermediate' if contractor_tier == 2 else 'Expert'})",
+                            "location": "Remote (Freelance)",
+                            "experience": experience_level,
                             "salary": str(budget) if budget else "",
                             "raw": {
                                 "source": "upwork.com",
