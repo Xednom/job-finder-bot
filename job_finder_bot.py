@@ -237,12 +237,19 @@ async def on_ready():
     remote="Remote only?",
     source="Which job source to query",
     experience="For Upwork: experience level (entry/intermediate/expert)",
+    employment_type="For OnlineJobs.ph: employment type (all/fulltime/parttime/freelance)",
 )
 @app_commands.choices(
     experience=[
         app_commands.Choice(name="Entry Level", value="entry"),
         app_commands.Choice(name="Intermediate", value="intermediate"),
         app_commands.Choice(name="Expert", value="expert"),
+    ],
+    employment_type=[
+        app_commands.Choice(name="All Types", value="all"),
+        app_commands.Choice(name="Full-Time", value="fulltime"),
+        app_commands.Choice(name="Part-Time", value="parttime"),
+        app_commands.Choice(name="Freelance", value="freelance"),
     ]
 )
 async def findjob(
@@ -252,6 +259,7 @@ async def findjob(
     remote: bool = True,
     source: str | None = DEFAULT_SOURCE,
     experience: str | None = "entry",
+    employment_type: str | None = "all",
 ):
     await interaction.response.defer(thinking=True)
     query = role.strip()
@@ -265,8 +273,18 @@ async def findjob(
         elif exp_lower in ["expert", "advanced", "3"]:
             contractor_tier = 3
     
+    # Map employment_type for OnlineJobs.ph
+    full_time = True
+    part_time = True
+    freelance = True
+    if employment_type and employment_type != "all":
+        emp_lower = employment_type.lower()
+        full_time = emp_lower == "fulltime"
+        part_time = emp_lower == "parttime"
+        freelance = emp_lower == "freelance"
+    
     logger.info(
-        f"User {interaction.user} searches for '{query}' source={source} location={location} remote={remote} experience={experience}"
+        f"User {interaction.user} searches for '{query}' source={source} location={location} remote={remote} experience={experience} employment_type={employment_type}"
     )
 
     async with aiohttp.ClientSession() as session:
@@ -293,7 +311,8 @@ async def findjob(
                 )
             elif source == "onlinejobs":
                 jobs = await fetch_jobs_onlinejobs(
-                    session, query=query, limit=MAX_RESULTS
+                    session, query=query, limit=MAX_RESULTS,
+                    full_time=full_time, part_time=part_time, freelance=freelance
                 )
                 # If OnlineJobs times out or fails, try RemoteOK as fallback
                 if not jobs:
@@ -341,12 +360,13 @@ async def findjob(
                 if not jobs:
                     logger.info(f"WeWorkRemotely failed, trying OnlineJobs.ph for '{query}'")
                     jobs = await fetch_jobs_onlinejobs(
-                        session, query=query, limit=MAX_RESULTS
+                        session, query=query, limit=MAX_RESULTS,
+                        full_time=full_time, part_time=part_time, freelance=freelance
                     )
         except aiohttp.ClientResponseError as e:
             logger.error(f"API error for query '{query}': {e}")
             await interaction.followup.send(
-                f"The job API is temporarily unavailable. Please try again in a moment.",
+                "The job API is temporarily unavailable. Please try again in a moment.",
                 ephemeral=True,
             )
             return
