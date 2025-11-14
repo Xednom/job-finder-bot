@@ -317,11 +317,6 @@ async def fetch_jobs_upwork(
     Args:
         contractor_tier: Experience level (1=Entry Level, 2=Intermediate, 3=Expert)
     """
-    # Try RSS feed first (has more structured data)
-    rss_url = "https://www.upwork.com/ab/feed/jobs/rss"
-    rss_params = {"q": query, "sort": "recency"}
-    
-    # Also try the main search page as fallback
     search_url = "https://www.upwork.com/nx/search/jobs/"
     search_params = {
         "q": query,
@@ -331,74 +326,15 @@ async def fetch_jobs_upwork(
     
     jobs = []
     
-    # Try RSS feed first
-    try:
-        async with session.get(
-            rss_url,
-            params=rss_params,
-            timeout=aiohttp.ClientTimeout(total=15),
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-        ) as resp:
-            if resp.status == 200:
-                text = await resp.text()
-                feed = feedparser.parse(text)
-                
-                for entry in feed.entries[:limit]:
-                    job_title = entry.get('title', 'Untitled')
-                    job_url = entry.get('link', '')
-                    description = entry.get('summary', '')
-                    
-                    # Extract budget/rate from description if available
-                    budget_match = re.search(r'<b>Budget</b>:\s*([^<]+)', description)
-                    hourly_match = re.search(r'<b>Hourly Range</b>:\s*([^<]+)', description)
-                    
-                    budget = ""
-                    if budget_match:
-                        budget = budget_match.group(1).strip()
-                    elif hourly_match:
-                        budget = hourly_match.group(1).strip()
-                    
-                    # Extract skills
-                    skills_match = re.search(r'<b>Skills</b>:\s*([^<]+)', description)
-                    skills = skills_match.group(1).strip() if skills_match else ""
-                    
-                    unique_id = hashlib.md5(job_url.encode()).hexdigest()
-                    
-                    # Map contractor_tier to experience level name
-                    if contractor_tier == 1:
-                        experience_level = "Entry Level"
-                    elif contractor_tier == 2:
-                        experience_level = "Intermediate"
-                    else:  # contractor_tier == 3
-                        experience_level = "Expert"
-                    
-                    jobs.append({
-                        "unique_id": unique_id,
-                        "title": job_title,
-                        "company": "Upwork Client",
-                        "url": job_url,
-                        "location": "Remote (Freelance)",
-                        "experience": experience_level,
-                        "salary": budget,
-                        "description": skills[:200] if skills else "",
-                        "raw": {
-                            "source": "upwork.com",
-                            "title": job_title,
-                            "url": job_url,
-                            "budget": budget,
-                            "skills": skills,
-                            "contractor_tier": contractor_tier
-                        }
-                    })
-                    
-                if jobs:
-                    return jobs[:limit]
-    except (aiohttp.ClientError, TimeoutError, Exception) as e:
-        print(f"Error fetching from Upwork RSS: {e}")
+    # Map contractor_tier to experience level name
+    if contractor_tier == 1:
+        experience_level = "Entry Level"
+    elif contractor_tier == 2:
+        experience_level = "Intermediate"
+    else:  # contractor_tier == 3
+        experience_level = "Expert"
     
-    # Fallback: Try scraping the search page
+    # Fetch from Upwork search page
     try:
         async with session.get(
             search_url,
@@ -447,21 +383,13 @@ async def fetch_jobs_upwork(
                         job_title = job.get('title', 'Untitled')
                         budget = job.get('amount', {}).get('amount', '') if 'amount' in job else ''
                         
-                        # Build job URL
-                        if job_id:
-                            full_url = f"https://www.upwork.com/jobs/{job_id}"
-                        else:
+                        # Skip if no valid job ID or title
+                        if not job_id or not job_title:
                             continue
                         
+                        # Build job URL
+                        full_url = f"https://www.upwork.com/jobs/{job_id}"
                         unique_id = hashlib.md5(full_url.encode()).hexdigest()
-                        
-                        # Map contractor_tier to experience level name
-                        if contractor_tier == 1:
-                            experience_level = "Entry Level"
-                        elif contractor_tier == 2:
-                            experience_level = "Intermediate"
-                        else:  # contractor_tier == 3
-                            experience_level = "Expert"
                         
                         jobs.append({
                             "unique_id": unique_id,
