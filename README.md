@@ -117,11 +117,26 @@ Once the bot is running and invited to your Discord server, use these slash comm
 ```
 /findjob role:"developer" source:remoteok
 /findjob role:"data entry" source:onlinejobs
-/findjob role:"writer" source:upwork
+/findjob role:"writer" source:upwork experience:entry
 /findjob role:"customer support" source:weworkremotely
 /findjob role:"virtual assistant" source:flexjobs
 /findjob role:"accountant" source:jobstreet
 ```
+
+### Upwork Experience Levels
+
+When using `source:upwork`, you can specify the experience level:
+
+```
+/findjob role:"virtual assistant" source:upwork experience:entry
+/findjob role:"developer" source:upwork experience:intermediate
+/findjob role:"designer" source:upwork experience:expert
+```
+
+Experience levels:
+- `entry` - Entry level (contractor_tier=1) - Default
+- `intermediate` - Intermediate level (contractor_tier=2)
+- `expert` - Expert level (contractor_tier=3)
 
 ### Available Sources
 

@@ -233,6 +233,7 @@ async def on_ready():
     location="Preferred location (optional)",
     remote="Remote only?",
     source="Which job source to query",
+    experience="For Upwork: experience level (entry/intermediate/expert)",
 )
 async def findjob(
     interaction: discord.Interaction,
@@ -240,11 +241,22 @@ async def findjob(
     location: str | None = None,
     remote: bool = True,
     source: str | None = DEFAULT_SOURCE,
+    experience: str | None = "entry",
 ):
     await interaction.response.defer(thinking=True)
     query = role.strip()
+    
+    # Map experience level to contractor_tier for Upwork
+    contractor_tier = 1  # Default to entry level
+    if experience:
+        exp_lower = experience.lower()
+        if exp_lower in ["intermediate", "inter", "2"]:
+            contractor_tier = 2
+        elif exp_lower in ["expert", "advanced", "3"]:
+            contractor_tier = 3
+    
     logger.info(
-        f"User {interaction.user} searches for '{query}' source={source} location={location} remote={remote}"
+        f"User {interaction.user} searches for '{query}' source={source} location={location} remote={remote} experience={experience}"
     )
 
     async with aiohttp.ClientSession() as session:
@@ -295,7 +307,7 @@ async def findjob(
                 )
             elif source == "upwork":
                 jobs = await fetch_jobs_upwork(
-                    session, query=query, limit=MAX_RESULTS
+                    session, query=query, limit=MAX_RESULTS, contractor_tier=contractor_tier
                 )
             else:
                 # fallback: try multiple sources in order
@@ -406,7 +418,8 @@ async def poll_saved_searches():
                 elif source == "jobstreet":
                     jobs = await fetch_jobs_jobstreet(session, query=query, limit=10)
                 elif source == "upwork":
-                    jobs = await fetch_jobs_upwork(session, query=query, limit=10)
+                    # Default to entry level for background searches
+                    jobs = await fetch_jobs_upwork(session, query=query, limit=10, contractor_tier=1)
                 elif source.startswith("rss:"):
                     feed = source.split(":", 1)[1]
                     jobs = await fetch_jobs_rss(session, feed_url=feed, limit=10)

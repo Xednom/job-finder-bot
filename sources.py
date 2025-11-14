@@ -310,60 +310,166 @@ async def fetch_jobs_jobstreet(
 
 
 async def fetch_jobs_upwork(
-    session: aiohttp.ClientSession, query: str, limit: int = 20
+    session: aiohttp.ClientSession, query: str, limit: int = 20, contractor_tier: int = 1
 ) -> List[Dict[str, Any]]:
-    """Fetch jobs from Upwork RSS feed"""
-    # Upwork provides RSS feeds for job searches
-    base_url = "https://www.upwork.com/ab/feed/jobs/rss"
-    params = {"q": query, "sort": "recency"}
+    """Fetch jobs from Upwork
     
+    Args:
+        contractor_tier: Experience level (1=Entry Level, 2=Intermediate, 3=Expert)
+    """
+    # Try RSS feed first (has more structured data)
+    rss_url = "https://www.upwork.com/ab/feed/jobs/rss"
+    rss_params = {"q": query, "sort": "recency"}
+    
+    # Also try the main search page as fallback
+    search_url = "https://www.upwork.com/nx/search/jobs/"
+    search_params = {
+        "q": query,
+        "sort": "recency",
+        "contractor_tier": str(contractor_tier)  # 1=Entry, 2=Intermediate, 3=Expert
+    }
+    
+    jobs = []
+    
+    # Try RSS feed first
     try:
         async with session.get(
-            base_url,
-            params=params,
+            rss_url,
+            params=rss_params,
             timeout=aiohttp.ClientTimeout(total=15),
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             }
         ) as resp:
-            if resp.status != 200:
-                print(f"Upwork RSS returned status {resp.status}")
-                return []
-            text = await resp.text()
+            if resp.status == 200:
+                text = await resp.text()
+                feed = feedparser.parse(text)
+                
+                for entry in feed.entries[:limit]:
+                    job_title = entry.get('title', 'Untitled')
+                    job_url = entry.get('link', '')
+                    description = entry.get('summary', '')
+                    
+                    # Extract budget/rate from description if available
+                    budget_match = re.search(r'<b>Budget</b>:\s*([^<]+)', description)
+                    hourly_match = re.search(r'<b>Hourly Range</b>:\s*([^<]+)', description)
+                    
+                    budget = ""
+                    if budget_match:
+                        budget = budget_match.group(1).strip()
+                    elif hourly_match:
+                        budget = hourly_match.group(1).strip()
+                    
+                    # Extract skills
+                    skills_match = re.search(r'<b>Skills</b>:\s*([^<]+)', description)
+                    skills = skills_match.group(1).strip() if skills_match else ""
+                    
+                    unique_id = hashlib.md5(job_url.encode()).hexdigest()
+                    
+                    jobs.append({
+                        "unique_id": unique_id,
+                        "title": job_title,
+                        "company": "Upwork Client",
+                        "url": job_url,
+                        "location": f"Remote (Freelance - {'Entry' if contractor_tier == 1 else 'Intermediate' if contractor_tier == 2 else 'Expert'})",
+                        "salary": budget,
+                        "description": skills[:200] if skills else "",
+                        "raw": {
+                            "source": "upwork.com",
+                            "title": job_title,
+                            "url": job_url,
+                            "budget": budget,
+                            "skills": skills,
+                            "contractor_tier": contractor_tier
+                        }
+                    })
+                    
+                if jobs:
+                    return jobs[:limit]
     except (aiohttp.ClientError, TimeoutError, Exception) as e:
-        print(f"Error fetching from Upwork: {e}")
-        return []
+        print(f"Error fetching from Upwork RSS: {e}")
     
-    feed = feedparser.parse(text)
-    jobs = []
-    
-    for entry in feed.entries[:limit]:
-        job_title = entry.get('title', 'Untitled')
-        job_url = entry.get('link', '')
-        description = entry.get('summary', '')
-        
-        # Extract budget/rate from description if available
-        budget_match = re.search(r'<b>Budget</b>:\s*([^<]+)', description)
-        budget = budget_match.group(1).strip() if budget_match else ""
-        
-        unique_id = hashlib.md5(job_url.encode()).hexdigest()
-        
-        jobs.append({
-            "unique_id": unique_id,
-            "title": job_title,
-            "company": "Upwork Client",
-            "url": job_url,
-            "location": "Remote (Freelance)",
-            "salary": budget,
-            "raw": {
-                "source": "upwork.com",
-                "title": job_title,
-                "url": job_url,
-                "budget": budget
+    # Fallback: Try scraping the search page
+    try:
+        async with session.get(
+            search_url,
+            params=search_params,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
             }
-        })
+        ) as resp:
+            if resp.status != 200:
+                print(f"Upwork search returned status {resp.status}")
+                return []
+            html = await resp.text()
+            
+            # Try to extract job data from the page
+            # Upwork often embeds JSON data in script tags
+            json_pattern = re.compile(
+                r'data-initial-state="({.*?})"',
+                re.DOTALL
+            )
+            
+            json_match = json_pattern.search(html)
+            if json_match:
+                try:
+                    import json
+                    # Unescape HTML entities
+                    json_str = unescape(json_match.group(1))
+                    data = json.loads(json_str)
+                    
+                    # Navigate the data structure to find jobs
+                    # This structure may vary, so we'll be defensive
+                    job_list = []
+                    if isinstance(data, dict):
+                        # Try to find job listings in various possible locations
+                        for key in ['jobs', 'results', 'searchResults']:
+                            if key in data:
+                                job_list = data[key] if isinstance(data[key], list) else []
+                                break
+                    
+                    for job in job_list[:limit]:
+                        if not isinstance(job, dict):
+                            continue
+                            
+                        job_id = job.get('id', '') or job.get('ciphertext', '')
+                        job_title = job.get('title', 'Untitled')
+                        job_type = job.get('jobType', '')
+                        budget = job.get('amount', {}).get('amount', '') if 'amount' in job else ''
+                        
+                        # Build job URL
+                        if job_id:
+                            full_url = f"https://www.upwork.com/jobs/{job_id}"
+                        else:
+                            continue
+                        
+                        unique_id = hashlib.md5(full_url.encode()).hexdigest()
+                        
+                        jobs.append({
+                            "unique_id": unique_id,
+                            "title": job_title,
+                            "company": "Upwork Client",
+                            "url": full_url,
+                            "location": f"Remote (Freelance - {'Entry' if contractor_tier == 1 else 'Intermediate' if contractor_tier == 2 else 'Expert'})",
+                            "salary": str(budget) if budget else "",
+                            "raw": {
+                                "source": "upwork.com",
+                                "title": job_title,
+                                "url": full_url,
+                                "budget": budget,
+                                "contractor_tier": contractor_tier
+                            }
+                        })
+                        
+                except Exception as e:
+                    print(f"Error parsing Upwork JSON: {e}")
+                    
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from Upwork search page: {e}")
     
-    return jobs
+    return jobs[:limit]
 
 
 async def fetch_jobs_rss(
