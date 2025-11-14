@@ -334,17 +334,30 @@ async def fetch_jobs_upwork(
     else:  # contractor_tier == 3
         experience_level = "Expert"
     
-    # Fetch from Upwork search page
+    # Fetch from Upwork search page with more realistic browser headers
     try:
         async with session.get(
             search_url,
             params=search_params,
             timeout=aiohttp.ClientTimeout(total=15),
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Cache-Control": "max-age=0"
             }
         ) as resp:
+            if resp.status == 403:
+                print("Upwork blocking request (403). This source may not work reliably due to bot detection.")
+                return []
             if resp.status != 200:
                 print(f"Upwork search returned status {resp.status}")
                 return []
@@ -447,16 +460,35 @@ async def fetch_jobs_rss(
 
 
 async def fetch_jobs_onlinejobs(
-    session: aiohttp.ClientSession, query: str, limit: int = 20
+    session: aiohttp.ClientSession,
+    query: str,
+    limit: int = 20,
+    full_time: bool = True,
+    part_time: bool = True,
+    freelance: bool = True,
 ) -> List[Dict[str, Any]]:
-    """Fetch jobs from OnlineJobs.ph"""
+    """Fetch jobs from OnlineJobs.ph.
+
+    The function builds the search URL using the `jobkeyword` parameter and
+    includes employment type flags as query parameters matching the
+    example URL:
+
+        https://www.onlinejobs.ph/jobseekers/jobsearch?jobkeyword=virtual+assistant&fullTime=on&partTime=on&Freelance=on
+
+    Args:
+        full_time: include fullTime=on when True
+        part_time: include partTime=on when True
+        freelance: include Freelance=on when True
+    """
     base_url = "https://www.onlinejobs.ph/jobseekers/jobsearch"
-    params = {
-        "jobkeyword": query,
-        "fullTime": "on",
-        "partTime": "on",
-        "Freelance": "on"
-    }
+    # Build params to match the example URL and allow selective employment types
+    params = {"jobkeyword": query}
+    if full_time:
+        params["fullTime"] = "on"
+    if part_time:
+        params["partTime"] = "on"
+    if freelance:
+        params["Freelance"] = "on"
     
     try:
         async with session.get(
