@@ -13,7 +13,12 @@ from discord.ui import View, Button
 from discord.ext import tasks
 
 from db import init_db, mark_job_seen, get_all_saved_searches
-from sources import fetch_jobs_remotive, fetch_jobs_remoteok, fetch_jobs_rss
+from sources import (
+    fetch_jobs_remotive,
+    fetch_jobs_remoteok,
+    fetch_jobs_rss,
+    fetch_jobs_onlinejobs,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jobfinder")
@@ -248,8 +253,24 @@ async def findjob(
                     location=location,
                     remote_only=remote,
                 )
+                # If Remotive fails or returns nothing, try RemoteOK as fallback
+                if not jobs:
+                    logger.info(
+                        f"Remotive returned no results, trying RemoteOK for '{query}'"
+                    )
+                    jobs = await fetch_jobs_remoteok(
+                        session, query=query, limit=MAX_RESULTS
+                    )
+            elif source == "remoteok":
+                jobs = await fetch_jobs_remoteok(
+                    session, query=query, limit=MAX_RESULTS
+                )
+            elif source == "onlinejobs":
+                jobs = await fetch_jobs_onlinejobs(
+                    session, query=query, limit=MAX_RESULTS
+                )
             else:
-                # fallback: try remotive
+                # fallback: try remotive then remoteok then onlinejobs
                 jobs = await fetch_jobs_remotive(
                     session,
                     query=query,
@@ -257,9 +278,19 @@ async def findjob(
                     location=location,
                     remote_only=remote,
                 )
+                if not jobs:
+                    jobs = await fetch_jobs_remoteok(
+                        session, query=query, limit=MAX_RESULTS
+                    )
+                if not jobs:
+                    jobs = await fetch_jobs_onlinejobs(
+                        session, query=query, limit=MAX_RESULTS
+                    )
         except aiohttp.ClientResponseError as e:
+            logger.error(f"API error for query '{query}': {e}")
             await interaction.followup.send(
-                f"Failed to fetch jobs: {e}", ephemeral=True
+                f"The job API is temporarily unavailable. Please try again in a moment.",
+                ephemeral=True,
             )
             return
         except Exception as e:
@@ -331,6 +362,8 @@ async def poll_saved_searches():
                     )
                 elif source == "remoteok":
                     jobs = await fetch_jobs_remoteok(session, query=query, limit=10)
+                elif source == "onlinejobs":
+                    jobs = await fetch_jobs_onlinejobs(session, query=query, limit=10)
                 elif source.startswith("rss:"):
                     feed = source.split(":", 1)[1]
                     jobs = await fetch_jobs_rss(session, feed_url=feed, limit=10)
