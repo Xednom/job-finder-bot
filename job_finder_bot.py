@@ -264,14 +264,9 @@ async def findjob(
     await interaction.response.defer(thinking=True)
     query = role.strip()
     
-    # Map experience level to contractor_tier for Upwork
-    contractor_tier = 1  # Default to entry level
-    if experience:
-        exp_lower = experience.lower()
-        if exp_lower in ["intermediate", "inter", "2"]:
-            contractor_tier = 2
-        elif exp_lower in ["expert", "advanced", "3"]:
-            contractor_tier = 3
+    # We'll apply 'experience' only when the source is Upwork (Upwork uses contractor_tier)
+    # For other sources (including OnlineJobs) 'experience' is ignored.
+    contractor_tier = 1  # default in case Upwork is chosen later
     
     # Map employment_type for OnlineJobs.ph
     full_time = True
@@ -314,6 +309,18 @@ async def findjob(
                     session, query=query, limit=MAX_RESULTS,
                     full_time=full_time, part_time=part_time, freelance=freelance
                 )
+                # Experience doesn't apply to OnlineJobs; if the user selected an
+                # experience level we'll let them know it's only used for Upwork.
+                if experience and experience.lower() != "entry":
+                    # ephemeral message to inform the user; not an error
+                    try:
+                        await interaction.followup.send(
+                            "Note: the experience filter applies only to Upwork; OnlineJobs ignores it.",
+                            ephemeral=True,
+                        )
+                    except Exception:
+                        # ignore follow-up failures
+                        pass
                 # If OnlineJobs times out or fails, try RemoteOK as fallback
                 if not jobs:
                     logger.info(
@@ -335,6 +342,15 @@ async def findjob(
                     session, query=query, limit=MAX_RESULTS
                 )
             elif source == "upwork":
+                # Map experience level to contractor_tier for Upwork
+                contractor_tier = 1  # Default to entry level
+                if experience:
+                    exp_lower = experience.lower()
+                    if exp_lower in ["intermediate", "inter", "2"]:
+                        contractor_tier = 2
+                    elif exp_lower in ["expert", "advanced", "3"]:
+                        contractor_tier = 3
+
                 jobs = await fetch_jobs_upwork(
                     session, query=query, limit=MAX_RESULTS, contractor_tier=contractor_tier
                 )
