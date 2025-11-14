@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "job-finder-bot"
+version = "0.1.0"
+description = ""
+authors = ["Xednom <monde.lacanlalay@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+discord-py = "^2.6.4"
+aiohttp = "^3.13.2"
+python-dotenv = "^1.0.0"
+asyncpg = "^0.29.0"
+feedparser = "^6.0.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
