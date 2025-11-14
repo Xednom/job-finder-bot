@@ -1,6 +1,17 @@
 # job-finder-bot
 
-A Discord bot that searches remote jobs via Remotive, RemoteOK, and RSS feeds. Uses PostgreSQL for storing saved searches and tracking seen jobs.
+A Discord bot that searches remote jobs from multiple platforms including Remotive, RemoteOK, OnlineJobs.ph, WeWorkRemotely, FlexJobs, JobStreet PH, Upwork, and RSS feeds. Uses PostgreSQL for storing saved searches and tracking seen jobs.
+
+## Supported Job Platforms
+
+- **Remotive** - Remote jobs from various companies
+- **RemoteOK** - Popular remote job board
+- **OnlineJobs.ph** - Philippines-focused remote jobs
+- **WeWorkRemotely** - Premium remote job listings
+- **FlexJobs** - Flexible and remote positions
+- **JobStreet PH** - Philippines job market (remote filter)
+- **Upwork** - Freelance opportunities
+- **RSS Feeds** - Custom job feeds
 
 ## Setup
 
@@ -93,11 +104,43 @@ Required environment variables:
 
 ## Usage
 
-Once the bot is running and invited to your Discord server:
+Once the bot is running and invited to your Discord server, use these slash commands:
 
-- `/findjob role:"virtual assistant" remote:true` - Search for jobs
-- Results are paginated with navigation buttons
-- The bot will DM users about new jobs matching their saved searches
+### Basic Job Search
+
+```
+/findjob role:"virtual assistant"
+```
+
+### Search Specific Platforms
+
+```
+/findjob role:"developer" source:remoteok
+/findjob role:"data entry" source:onlinejobs
+/findjob role:"writer" source:upwork
+/findjob role:"customer support" source:weworkremotely
+/findjob role:"virtual assistant" source:flexjobs
+/findjob role:"accountant" source:jobstreet
+```
+
+### Available Sources
+
+- `remotive` (default) - Remotive API
+- `remoteok` - RemoteOK
+- `onlinejobs` - OnlineJobs.ph (Philippines)
+- `weworkremotely` - WeWorkRemotely
+- `flexjobs` - FlexJobs
+- `jobstreet` - JobStreet Philippines
+- `upwork` - Upwork freelance jobs
+
+### Advanced Search Options
+
+```
+/findjob role:"software engineer" location:"Philippines" remote:true
+/findjob role:"designer" source:remotive
+```
+
+Results are paginated with ◀️ Prev and Next ▶️ buttons. The bot will also DM users about new jobs matching their saved searches every 15 minutes.
 
 ## Database
 

@@ -102,6 +102,270 @@ async def fetch_jobs_remoteok(
     return jobs
 
 
+async def fetch_jobs_weworkremotely(
+    session: aiohttp.ClientSession, query: str, limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Fetch jobs from We Work Remotely"""
+    base_url = "https://weworkremotely.com/remote-jobs/search"
+    params = {"term": query}
+    
+    try:
+        async with session.get(
+            base_url,
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+        ) as resp:
+            if resp.status != 200:
+                print(f"WeWorkRemotely returned status {resp.status}")
+                return []
+            html = await resp.text()
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from WeWorkRemotely: {e}")
+        return []
+    
+    jobs = []
+    
+    # Pattern to match job listings
+    job_pattern = re.compile(
+        r'<li class="feature">.*?<a href="(/remote-jobs/[^"]+)".*?'
+        r'<span class="title">(.*?)</span>.*?'
+        r'<span class="company">(.*?)</span>',
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    matches = job_pattern.finditer(html)
+    
+    for match in matches:
+        if len(jobs) >= limit:
+            break
+            
+        job_url_path = match.group(1)
+        job_title = unescape(match.group(2).strip())
+        company_name = unescape(match.group(3).strip())
+        
+        # Clean up - remove HTML tags
+        job_title = re.sub(r'<[^>]+>', '', job_title).strip()
+        company_name = re.sub(r'<[^>]+>', '', company_name).strip()
+        
+        full_url = f"https://weworkremotely.com{job_url_path}"
+        unique_id = hashlib.md5(full_url.encode()).hexdigest()
+        
+        jobs.append({
+            "unique_id": unique_id,
+            "title": job_title,
+            "company": company_name or "WeWorkRemotely Employer",
+            "url": full_url,
+            "location": "Remote",
+            "raw": {
+                "source": "weworkremotely.com",
+                "title": job_title,
+                "company": company_name,
+                "url": full_url
+            }
+        })
+    
+    return jobs
+
+
+async def fetch_jobs_flexjobs(
+    session: aiohttp.ClientSession, query: str, limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Fetch jobs from FlexJobs (limited free access)"""
+    # Note: FlexJobs has limited free access, using their job search
+    base_url = "https://www.flexjobs.com/search"
+    params = {"search": query, "location": "Anywhere"}
+    
+    try:
+        async with session.get(
+            base_url,
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+        ) as resp:
+            if resp.status != 200:
+                print(f"FlexJobs returned status {resp.status}")
+                return []
+            html = await resp.text()
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from FlexJobs: {e}")
+        return []
+    
+    jobs = []
+    
+    # Pattern for FlexJobs listings
+    job_pattern = re.compile(
+        r'<h5[^>]*>.*?<a href="([^"]+/jobs/[^"]+)"[^>]*>(.*?)</a>.*?</h5>.*?'
+        r'<h6[^>]*>(.*?)</h6>',
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    matches = job_pattern.finditer(html)
+    
+    for match in matches:
+        if len(jobs) >= limit:
+            break
+            
+        job_url = match.group(1)
+        job_title = unescape(match.group(2).strip())
+        company_name = unescape(match.group(3).strip())
+        
+        # Clean up
+        job_title = re.sub(r'<[^>]+>', '', job_title).strip()
+        company_name = re.sub(r'<[^>]+>', '', company_name).strip()
+        
+        if not job_url.startswith('http'):
+            full_url = f"https://www.flexjobs.com{job_url}"
+        else:
+            full_url = job_url
+            
+        unique_id = hashlib.md5(full_url.encode()).hexdigest()
+        
+        jobs.append({
+            "unique_id": unique_id,
+            "title": job_title,
+            "company": company_name or "FlexJobs Employer",
+            "url": full_url,
+            "location": "Remote/Flexible",
+            "raw": {
+                "source": "flexjobs.com",
+                "title": job_title,
+                "company": company_name,
+                "url": full_url
+            }
+        })
+    
+    return jobs
+
+
+async def fetch_jobs_jobstreet(
+    session: aiohttp.ClientSession, query: str, limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Fetch jobs from JobStreet Philippines"""
+    base_url = "https://www.jobstreet.com.ph/jobs"
+    params = {"keywords": query, "work-type": "remote"}
+    
+    try:
+        async with session.get(
+            base_url,
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+        ) as resp:
+            if resp.status != 200:
+                print(f"JobStreet returned status {resp.status}")
+                return []
+            html = await resp.text()
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from JobStreet: {e}")
+        return []
+    
+    jobs = []
+    
+    # JobStreet uses JSON data in script tags, try to extract
+    json_pattern = re.compile(
+        r'window\.SEEK_REDUX_DATA\s*=\s*({.*?});',
+        re.DOTALL
+    )
+    
+    json_match = json_pattern.search(html)
+    if json_match:
+        try:
+            import json
+            data = json.loads(json_match.group(1))
+            job_list = data.get('results', {}).get('results', {}).get('jobs', [])
+            
+            for job in job_list[:limit]:
+                job_id = job.get('id', '')
+                job_title = job.get('title', 'Untitled')
+                company_name = job.get('companyName', '')
+                location = job.get('location', 'Philippines')
+                
+                full_url = f"https://www.jobstreet.com.ph/job/{job_id}"
+                unique_id = hashlib.md5(full_url.encode()).hexdigest()
+                
+                jobs.append({
+                    "unique_id": unique_id,
+                    "title": job_title,
+                    "company": company_name or "JobStreet Employer",
+                    "url": full_url,
+                    "location": location,
+                    "raw": {
+                        "source": "jobstreet.com.ph",
+                        "title": job_title,
+                        "company": company_name,
+                        "url": full_url
+                    }
+                })
+        except Exception as e:
+            print(f"Error parsing JobStreet JSON: {e}")
+    
+    return jobs
+
+
+async def fetch_jobs_upwork(
+    session: aiohttp.ClientSession, query: str, limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Fetch jobs from Upwork RSS feed"""
+    # Upwork provides RSS feeds for job searches
+    base_url = "https://www.upwork.com/ab/feed/jobs/rss"
+    params = {"q": query, "sort": "recency"}
+    
+    try:
+        async with session.get(
+            base_url,
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=15),
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+        ) as resp:
+            if resp.status != 200:
+                print(f"Upwork RSS returned status {resp.status}")
+                return []
+            text = await resp.text()
+    except (aiohttp.ClientError, TimeoutError, Exception) as e:
+        print(f"Error fetching from Upwork: {e}")
+        return []
+    
+    feed = feedparser.parse(text)
+    jobs = []
+    
+    for entry in feed.entries[:limit]:
+        job_title = entry.get('title', 'Untitled')
+        job_url = entry.get('link', '')
+        description = entry.get('summary', '')
+        
+        # Extract budget/rate from description if available
+        budget_match = re.search(r'<b>Budget</b>:\s*([^<]+)', description)
+        budget = budget_match.group(1).strip() if budget_match else ""
+        
+        unique_id = hashlib.md5(job_url.encode()).hexdigest()
+        
+        jobs.append({
+            "unique_id": unique_id,
+            "title": job_title,
+            "company": "Upwork Client",
+            "url": job_url,
+            "location": "Remote (Freelance)",
+            "salary": budget,
+            "raw": {
+                "source": "upwork.com",
+                "title": job_title,
+                "url": job_url,
+                "budget": budget
+            }
+        })
+    
+    return jobs
+
+
 async def fetch_jobs_rss(
     session: aiohttp.ClientSession, feed_url: str, limit: int = 20
 ) -> List[Dict[str, Any]]:

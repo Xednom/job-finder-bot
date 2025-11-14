@@ -18,6 +18,10 @@ from sources import (
     fetch_jobs_remoteok,
     fetch_jobs_rss,
     fetch_jobs_onlinejobs,
+    fetch_jobs_weworkremotely,
+    fetch_jobs_flexjobs,
+    fetch_jobs_jobstreet,
+    fetch_jobs_upwork,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -269,8 +273,32 @@ async def findjob(
                 jobs = await fetch_jobs_onlinejobs(
                     session, query=query, limit=MAX_RESULTS
                 )
+                # If OnlineJobs times out or fails, try RemoteOK as fallback
+                if not jobs:
+                    logger.info(
+                        f"OnlineJobs.ph failed, trying RemoteOK for '{query}'"
+                    )
+                    jobs = await fetch_jobs_remoteok(
+                        session, query=query, limit=MAX_RESULTS
+                    )
+            elif source == "weworkremotely":
+                jobs = await fetch_jobs_weworkremotely(
+                    session, query=query, limit=MAX_RESULTS
+                )
+            elif source == "flexjobs":
+                jobs = await fetch_jobs_flexjobs(
+                    session, query=query, limit=MAX_RESULTS
+                )
+            elif source == "jobstreet":
+                jobs = await fetch_jobs_jobstreet(
+                    session, query=query, limit=MAX_RESULTS
+                )
+            elif source == "upwork":
+                jobs = await fetch_jobs_upwork(
+                    session, query=query, limit=MAX_RESULTS
+                )
             else:
-                # fallback: try remotive then remoteok then onlinejobs
+                # fallback: try multiple sources in order
                 jobs = await fetch_jobs_remotive(
                     session,
                     query=query,
@@ -279,10 +307,17 @@ async def findjob(
                     remote_only=remote,
                 )
                 if not jobs:
+                    logger.info(f"Remotive failed, trying RemoteOK for '{query}'")
                     jobs = await fetch_jobs_remoteok(
                         session, query=query, limit=MAX_RESULTS
                     )
                 if not jobs:
+                    logger.info(f"RemoteOK failed, trying WeWorkRemotely for '{query}'")
+                    jobs = await fetch_jobs_weworkremotely(
+                        session, query=query, limit=MAX_RESULTS
+                    )
+                if not jobs:
+                    logger.info(f"WeWorkRemotely failed, trying OnlineJobs.ph for '{query}'")
                     jobs = await fetch_jobs_onlinejobs(
                         session, query=query, limit=MAX_RESULTS
                     )
@@ -364,6 +399,14 @@ async def poll_saved_searches():
                     jobs = await fetch_jobs_remoteok(session, query=query, limit=10)
                 elif source == "onlinejobs":
                     jobs = await fetch_jobs_onlinejobs(session, query=query, limit=10)
+                elif source == "weworkremotely":
+                    jobs = await fetch_jobs_weworkremotely(session, query=query, limit=10)
+                elif source == "flexjobs":
+                    jobs = await fetch_jobs_flexjobs(session, query=query, limit=10)
+                elif source == "jobstreet":
+                    jobs = await fetch_jobs_jobstreet(session, query=query, limit=10)
+                elif source == "upwork":
+                    jobs = await fetch_jobs_upwork(session, query=query, limit=10)
                 elif source.startswith("rss:"):
                     feed = source.split(":", 1)[1]
                     jobs = await fetch_jobs_rss(session, feed_url=feed, limit=10)
