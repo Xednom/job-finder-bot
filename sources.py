@@ -153,7 +153,7 @@ async def fetch_jobs_weworkremotely(
         full_url = f"https://weworkremotely.com{job_url_path}"
         unique_id = hashlib.md5(full_url.encode()).hexdigest()
         
-        jobs.append({
+    jobs.append({
             "unique_id": unique_id,
             "title": job_title,
             "company": company_name or "WeWorkRemotely Employer",
@@ -224,7 +224,7 @@ async def fetch_jobs_flexjobs(
             full_url = job_url
             
         unique_id = hashlib.md5(full_url.encode()).hexdigest()
-        
+
         jobs.append({
             "unique_id": unique_id,
             "title": job_title,
@@ -235,8 +235,8 @@ async def fetch_jobs_flexjobs(
                 "source": "flexjobs.com",
                 "title": job_title,
                 "company": company_name,
-                "url": full_url
-            }
+                "url": full_url,
+            },
         })
     
     return jobs
@@ -271,38 +271,41 @@ async def fetch_jobs_jobstreet(
     # JobStreet uses JSON data in script tags, try to extract
     json_pattern = re.compile(
         r'window\.SEEK_REDUX_DATA\s*=\s*({.*?});',
-        re.DOTALL
+        re.DOTALL,
     )
-    
+
     json_match = json_pattern.search(html)
     if json_match:
         try:
             import json
+
             data = json.loads(json_match.group(1))
             job_list = data.get('results', {}).get('results', {}).get('jobs', [])
-            
+
             for job in job_list[:limit]:
                 job_id = job.get('id', '')
                 job_title = job.get('title', 'Untitled')
                 company_name = job.get('companyName', '')
                 location = job.get('location', 'Philippines')
-                
+
                 full_url = f"https://www.jobstreet.com.ph/job/{job_id}"
                 unique_id = hashlib.md5(full_url.encode()).hexdigest()
-                
-                jobs.append({
-                    "unique_id": unique_id,
-                    "title": job_title,
-                    "company": company_name or "JobStreet Employer",
-                    "url": full_url,
-                    "location": location,
-                    "raw": {
-                        "source": "jobstreet.com.ph",
+
+                jobs.append(
+                    {
+                        "unique_id": unique_id,
                         "title": job_title,
-                        "company": company_name,
-                        "url": full_url
+                        "company": company_name or "JobStreet Employer",
+                        "url": full_url,
+                        "location": location,
+                        "raw": {
+                            "source": "jobstreet.com.ph",
+                            "title": job_title,
+                            "company": company_name,
+                            "url": full_url,
+                        },
                     }
-                })
+                )
         except Exception as e:
             print(f"Error parsing JobStreet JSON: {e}")
     
@@ -513,12 +516,20 @@ async def fetch_jobs_onlinejobs(
     # OnlineJobs.ph uses div elements with class "jobpost-cat-box" for each job
     
     # Find all job listings using regex patterns
-    # Pattern to match job title and link
-    job_pattern = re.compile(
+    # Two possible markup patterns are used by OnlineJobs.ph.
+    # 1) Older pattern: div.jobpost-cat-box contains an <a href="/jobseekers/jobdetails/<id>">
+    job_pattern_old = re.compile(
         r'<div class="jobpost-cat-box.*?">.*?'
         r'<a href="(/jobseekers/jobdetails/\d+)".*?>'
         r'<h3.*?>(.*?)</h3>',
-        re.DOTALL | re.IGNORECASE
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    # 2) Newer pattern: an <a href="/jobseekers/job/<slug>-<id>"> wraps the div.jobpost-cat-box
+    outer_pattern = re.compile(
+        r'<a[^>]*href="(/jobseekers/job/[^"]+)"[^>]*>\s*'
+        r'<div[^>]*class="[^\"]*jobpost-cat-box[^\"]*"[^>]*>(.*?)</div>\s*</a>',
+        re.DOTALL | re.IGNORECASE,
     )
     
     # Pattern to match company name
@@ -527,32 +538,61 @@ async def fetch_jobs_onlinejobs(
         re.DOTALL | re.IGNORECASE
     )
     
-    matches = job_pattern.finditer(html)
+    # Try the old pattern first, then fallback to the anchor wrapping pattern
+    matches = list(job_pattern_old.finditer(html))
+    use_outer = False
+    if not matches:
+        outer_matches = list(outer_pattern.finditer(html))
+        if outer_matches:
+            # convert outer matches into a format similar to job_pattern_old
+            # group 1 -> url/path, group 2 -> inner html (we'll extract title and company later)
+            matches = outer_matches
+            use_outer = True
     
     for match in matches:
         if len(jobs) >= limit:
             break
-            
-        job_url_path = match.group(1)
-        job_title = unescape(match.group(2).strip())
-        
+
+        if not use_outer:
+            # old style: group(1)=path to job details, group(2)=title
+            job_url_path = match.group(1)
+            job_title = unescape(match.group(2).strip())
+            # company may be in the following HTML section; search nearby
+            company_section = html[match.end(): match.end() + 500]
+            company_match = company_pattern.search(company_section)
+            company_name = (
+                unescape(company_match.group(1).strip()) if company_match else ""
+            )
+        else:
+            # outer pattern: group(1)=path, group(2)=inner HTML that contains the title and company
+            job_url_path = match.group(1)
+            inner_html = match.group(2)
+            # title in h3 or h4
+            title_match = re.search(r'<h[34][^>]*>(.*?)</h[34]>', inner_html, re.DOTALL | re.IGNORECASE)
+            job_title = unescape(title_match.group(1).strip()) if title_match else "Untitled"
+            # company in a <p> before <em>
+            company_match = re.search(r'<p[^>]*>\s*(.*?)\s*<em', inner_html, re.DOTALL | re.IGNORECASE)
+            company_name = (
+                unescape(company_match.group(1).strip()) if company_match else ""
+            )
+
         # Clean up title - remove HTML tags
         job_title = re.sub(r'<[^>]+>', '', job_title).strip()
-        
-        # Try to find company name in the section following the title
-        section_start = match.end()
-        section = html[section_start:section_start + 500]
-        company_match = company_pattern.search(section)
-        company_name = ""
-        if company_match:
-            company_name = unescape(company_match.group(1).strip())
-            company_name = re.sub(r'<[^>]+>', '', company_name).strip()
-        
+
+        # company_name is captured by regex (cleaned below), keep fallback pattern
+        if not company_name:
+            section_start = match.end()
+            section = html[section_start:section_start + 500]
+            company_match = company_pattern.search(section)
+            if company_match:
+                company_name = unescape(company_match.group(1).strip())
+                company_name = re.sub(r'<[^>]+>', '', company_name).strip()
+
         full_url = f"https://www.onlinejobs.ph{job_url_path}"
-        
+
         # Generate unique ID
         unique_id = hashlib.md5(full_url.encode()).hexdigest()
-        
+
         jobs.append({
             "unique_id": unique_id,
             "title": job_title,
