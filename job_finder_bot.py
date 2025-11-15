@@ -191,7 +191,10 @@ def build_jobs_embed(jobs: List[Dict[str, Any]], page: int) -> discord.Embed:
             field_value += f"**Experience:** {experience}\n"
         if salary:
             field_value += f"**Salary:** {salary}\n"
-        field_value += f"[Apply / Read more]({url})\n\n{short_desc}"
+        # Discord embeds do not reliably support inline markdown links in all
+        # clients. Use the raw URL (wrapped in < > to avoid trailing punctuation)
+        # so Discord will render a clickable link.
+        field_value += f"Apply / Read more: <{url}>\n\n{short_desc}"
         embed.add_field(name=name_line, value=field_value, inline=False)
 
     embed.set_footer(
@@ -321,14 +324,9 @@ async def findjob(
                     except Exception:
                         # ignore follow-up failures
                         pass
-                # If OnlineJobs times out or fails, try RemoteOK as fallback
-                if not jobs:
-                    logger.info(
-                        f"OnlineJobs.ph failed, trying RemoteOK for '{query}'"
-                    )
-                    jobs = await fetch_jobs_remoteok(
-                        session, query=query, limit=MAX_RESULTS
-                    )
+                # Do not fallback to another source when the user explicitly
+                # requested specific source. This prevents results from a different
+                # source (e.g. RemoteOK) showing when the user expects OnlineJobs.
             elif source == "weworkremotely":
                 jobs = await fetch_jobs_weworkremotely(
                     session, query=query, limit=MAX_RESULTS
