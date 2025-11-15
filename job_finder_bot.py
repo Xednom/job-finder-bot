@@ -78,8 +78,8 @@ if not DISCORD_TOKEN:
 
 # --- Configuration ---
 DEFAULT_SOURCE = "remotive"  # example free API
-MAX_RESULTS = 10  # how many jobs to fetch and paginate
-JOBS_PER_PAGE = 3
+MAX_RESULTS = 50  # how many jobs to fetch and paginate (increase to allow larger pages)
+JOBS_PER_PAGE = 10  # how many jobs to show per embed page
 
 
 # Job fetchers are implemented in `sources.py` and imported above.
